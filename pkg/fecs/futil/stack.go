@@ -2,18 +2,30 @@ package futil
 
 const (
 	stackGrowthFactor float32 = 1.5
-	trimDifference    int     = 256
+	trimDifference    int     = 128
 	initialCapacity   int     = 32
 )
 
+// Stack is a simple stack implementation over generic type T.
 type Stack[T interface{}] interface {
+
+	// Size returns the number of elements currently in the stack.
 	Size() int
+
+	// IsEmpty returns a boolean indicator for whether the stack is empty or not.
 	IsEmpty() bool
+
+	// Clear removes all elements from the stack.
 	Clear()
+
+	// Push pushes a new value onto the top of the stack.
 	Push(value T)
+
+	// Pop removes and returns the top element from the stack.
 	Pop() T
 }
 
+// NewStack returns a new Stack instance.
 func NewStack[T interface{}]() Stack[T] {
 	return &stack[T]{
 		values: make([]T, initialCapacity),
@@ -35,6 +47,7 @@ func (s *stack[T]) IsEmpty() bool {
 }
 
 func (s *stack[T]) Clear() {
+	s.values = make([]T, initialCapacity)
 	s.index = 0
 }
 

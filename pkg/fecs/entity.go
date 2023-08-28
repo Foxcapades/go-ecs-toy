@@ -17,7 +17,7 @@ func (e EntityID) String() string {
 
 type entityDesc struct {
 	id   EntityID
-	mask ComponentMask
+	mask componentMask
 }
 
 func createEntityID(index entityIndex, version entityVersion) EntityID {

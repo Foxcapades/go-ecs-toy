@@ -1,15 +1,14 @@
 package fecs
 
-type componentIndex uint32
-type ComponentVersion uint32
+type componentIndex = uint32
+type componentVersion = uint32
 
+// ComponentID defines an opaque identifier for a Component.
 type ComponentID struct {
 	index   componentIndex
-	version ComponentVersion
+	version componentVersion
 }
 
-var nextComponentID uint32 = 1
-
-func NewComponentID(index componentIndex, version ComponentVersion) ComponentID {
+func newComponentID(index componentIndex, version componentVersion) ComponentID {
 	return ComponentID{index, version}
 }

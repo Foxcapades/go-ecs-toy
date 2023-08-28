@@ -12,7 +12,7 @@ type Scene interface {
 type scene struct {
 	freeEntities futil.Stack[entityIndex]
 	entities     []entityDesc
-	cPools       map[ComponentType]ComponentPool
+	cPools       map[ComponentType]*componentPool
 }
 
 // NewEntity creates a new entity attached to the current scene.
@@ -58,7 +58,7 @@ func (s *scene) Assign(id EntityID, component Component) ComponentID {
 		return pool.Add(component)
 	}
 
-	pool := NewComponentPool()
+	pool := newComponentPool()
 	s.cPools[component.GetType()] = pool
 	return pool.Add(component)
 }

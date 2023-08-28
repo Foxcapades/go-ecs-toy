@@ -7,8 +7,13 @@ type componentVersion = uint32
 type ComponentID struct {
 	index   componentIndex
 	version componentVersion
+	cType   ComponentType
 }
 
-func newComponentID(index componentIndex, version componentVersion) ComponentID {
-	return ComponentID{index, version}
+func newComponentID(
+	index componentIndex,
+	version componentVersion,
+	cType ComponentType,
+) ComponentID {
+	return ComponentID{index, version, cType}
 }

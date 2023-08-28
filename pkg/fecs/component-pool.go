@@ -47,7 +47,7 @@ func (p *componentPool) get(id ComponentID) (Component, bool) {
 func (p *componentPool) add(component Component) ComponentID {
 	if !p.unused.IsEmpty() {
 		oldId := p.unused.Pop()
-		newId := newComponentID(oldId.index, oldId.version+1)
+		newId := newComponentID(oldId.index, oldId.version+1, oldId.cType)
 
 		p.data[newId.index].component = component
 		p.data[newId.index].version = newId.version
@@ -56,7 +56,7 @@ func (p *componentPool) add(component Component) ComponentID {
 	}
 
 	l := len(p.data)
-	i := newComponentID(componentIndex(l), 1)
+	i := newComponentID(componentIndex(l), 1, component.GetType())
 
 	p.data = append(p.data, componentRef{component, i.version})
 

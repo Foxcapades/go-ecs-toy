@@ -6,7 +6,7 @@ type Scene interface {
 	NewEntity() EntityID
 	Assign(EntityID, Component) ComponentID
 	Remove(EntityID)
-	View(componentType ComponentType) EntityView
+	EntitiesWith(componentType ComponentType) EntityView
 	Components(componentType ComponentType) ComponentView
 }
 
@@ -64,7 +64,7 @@ func (s *scene) Assign(id EntityID, component Component) ComponentID {
 	return pool.add(component)
 }
 
-func (s *scene) View(componentType ComponentType) EntityView {
+func (s *scene) EntitiesWith(componentType ComponentType) EntityView {
 	return &entityView{
 		scene: s,
 		cType: componentType,

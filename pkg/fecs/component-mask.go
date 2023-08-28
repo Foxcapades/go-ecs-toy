@@ -6,7 +6,7 @@ type componentMask struct {
 	masks [4]uint64
 }
 
-func (m *componentMask) Set(t ComponentType) {
+func (m *componentMask) set(t ComponentType) {
 	switch true {
 	case t > 192:
 		m.masks[3] |= 1 << (t - 193)
@@ -19,7 +19,7 @@ func (m *componentMask) Set(t ComponentType) {
 	}
 }
 
-func (m *componentMask) Has(t ComponentType) bool {
+func (m *componentMask) has(t ComponentType) bool {
 	switch true {
 	case t > 192:
 		return m.masks[3]&1<<(t-193) > 0
@@ -32,7 +32,7 @@ func (m *componentMask) Has(t ComponentType) bool {
 	}
 }
 
-func (m *componentMask) Unset(t ComponentType) {
+func (m *componentMask) unset(t ComponentType) {
 	switch true {
 	case t > 192:
 		m.masks[3] &= ^(1 << (t - 193))
@@ -45,6 +45,6 @@ func (m *componentMask) Unset(t ComponentType) {
 	}
 }
 
-func (m *componentMask) Reset() {
+func (m *componentMask) reset() {
 	m.masks = [4]uint64{}
 }

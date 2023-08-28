@@ -6,7 +6,8 @@ type Scene interface {
 	NewEntity() EntityID
 	Assign(EntityID, Component) ComponentID
 	Remove(EntityID)
-	View(componentType ComponentType) SceneView
+	View(componentType ComponentType) EntityView
+	Components(componentType ComponentType) ComponentView
 }
 
 type scene struct {
@@ -47,27 +48,39 @@ func (s *scene) Remove(id EntityID) {
 		return
 	}
 
-	s.entities[idx].mask.Reset()
+	s.entities[idx].mask.reset()
 	s.freeEntities.Push(idx)
 }
 
 func (s *scene) Assign(id EntityID, component Component) ComponentID {
-	s.entities[id.index].mask.Set(component.GetType())
+	s.entities[id.index].mask.set(component.GetType())
 
 	if pool, ok := s.cPools[component.GetType()]; ok {
-		return pool.Add(component)
+		return pool.add(component)
 	}
 
 	pool := newComponentPool()
 	s.cPools[component.GetType()] = pool
-	return pool.Add(component)
+	return pool.add(component)
 }
 
-func (s *scene) View(componentType ComponentType) SceneView {
-	return &sceneView{
+func (s *scene) View(componentType ComponentType) EntityView {
+	return &entityView{
 		scene: s,
 		cType: componentType,
 		index: 0,
 		next:  -1,
 	}
+}
+
+func (s *scene) Components(componentType ComponentType) ComponentView {
+	if pool, ok := s.cPools[componentType]; ok {
+		return &componentView{
+			pool:  pool,
+			index: 0,
+			next:  -1,
+		}
+	}
+
+	return emptyComponentView{}
 }

@@ -22,11 +22,21 @@ type componentPool struct {
 	data   []componentRef
 }
 
-func (p *componentPool) Size() int {
+func (p *componentPool) toSlice() []Component {
+	out := make([]Component, 0, p.size())
+	for i := range p.data {
+		if p.data[i].component != nil {
+			out = append(out, p.data[i].component)
+		}
+	}
+	return out
+}
+
+func (p *componentPool) size() int {
 	return len(p.data) - p.unused.Size()
 }
 
-func (p *componentPool) Get(id ComponentID) (Component, bool) {
+func (p *componentPool) get(id ComponentID) (Component, bool) {
 	if !p.componentIdIsValid(id) {
 		return nil, false
 	}
@@ -34,7 +44,7 @@ func (p *componentPool) Get(id ComponentID) (Component, bool) {
 	return p.data[id.index].component, true
 }
 
-func (p *componentPool) Add(component Component) ComponentID {
+func (p *componentPool) add(component Component) ComponentID {
 	if !p.unused.IsEmpty() {
 		oldId := p.unused.Pop()
 		newId := newComponentID(oldId.index, oldId.version+1)
@@ -53,7 +63,7 @@ func (p *componentPool) Add(component Component) ComponentID {
 	return i
 }
 
-func (p *componentPool) Remove(id ComponentID) bool {
+func (p *componentPool) remove(id ComponentID) bool {
 	if p.componentIdIsValid(id) {
 		p.data[id.index].component = nil
 		p.unused.Push(id)
@@ -61,14 +71,6 @@ func (p *componentPool) Remove(id ComponentID) bool {
 	}
 
 	return false
-}
-
-func (p *componentPool) ForEach(fn func(component Component)) {
-	for i := range p.data {
-		if p.data[i].component != nil {
-			fn(p.data[i].component)
-		}
-	}
 }
 
 func (p *componentPool) componentIdIsValid(id ComponentID) bool {

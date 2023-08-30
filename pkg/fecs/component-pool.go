@@ -1,80 +1,32 @@
 package fecs
 
-import "github.com/Foxcapades/go-ecs-toy/pkg/fecs/futil"
+// ComponentPool is a contiguous block of memory containing zero or more
+// Component instances.
+type ComponentPool interface {
 
-const initialComponentPoolSize = 32
+	// Size returns the number of Component instances currently in this
+	// ComponentPool.
+	Size() int
 
-type componentRef struct {
-	component Component
-	version   componentVersion
-}
+	// Get attempts to retrieve a component from the pool by the given
+	// ComponentID.  If the target Component was not found, returns nil and false.
+	// If the target Component was found, returns the target component and true.
+	Get(componentID ComponentID) (Component, bool)
 
-// newComponentPool creates a new ComponentPool instance.
-func newComponentPool() *componentPool {
-	return &componentPool{
-		unused: futil.NewStack[ComponentID](),
-		data:   make([]componentRef, initialComponentPoolSize),
-	}
-}
+	// Has tests whether this ComponentPool contains the component with the given
+	// ComponentID.
+	Has(componentID ComponentID) bool
 
-type componentPool struct {
-	unused futil.Stack[ComponentID]
-	data   []componentRef
-}
+	// Add adds the target Component to this ComponentPool, generating and
+	// returning a ComponentID for the Component.
+	Add(component Component) ComponentID
 
-func (p *componentPool) toSlice() []Component {
-	out := make([]Component, 0, p.size())
-	for i := range p.data {
-		if p.data[i].component != nil {
-			out = append(out, p.data[i].component)
-		}
-	}
-	return out
-}
+	// Remove removes the target Component from this ComponentPool.  If the target
+	// Component was not found, returns false.  If the target Component was found
+	// and removed, returns true.
+	Remove(componentID ComponentID) bool
 
-func (p *componentPool) size() int {
-	return len(p.data) - p.unused.Size()
-}
-
-func (p *componentPool) get(id ComponentID) (Component, bool) {
-	if !p.componentIdIsValid(id) {
-		return nil, false
-	}
-
-	return p.data[id.index].component, true
-}
-
-func (p *componentPool) add(component Component) ComponentID {
-	if !p.unused.IsEmpty() {
-		oldId := p.unused.Pop()
-		newId := newComponentID(oldId.index, oldId.version+1, oldId.cType)
-
-		p.data[newId.index].component = component
-		p.data[newId.index].version = newId.version
-
-		return newId
-	}
-
-	l := len(p.data)
-	i := newComponentID(componentIndex(l), 1, component.GetType())
-
-	p.data = append(p.data, componentRef{component, i.version})
-
-	return i
-}
-
-func (p *componentPool) remove(id ComponentID) bool {
-	if p.componentIdIsValid(id) {
-		p.data[id.index].component = nil
-		p.unused.Push(id)
-		return true
-	}
-
-	return false
-}
-
-func (p *componentPool) componentIdIsValid(id ComponentID) bool {
-	return id.index < componentIndex(len(p.data)) &&
-		p.data[id.index].component != nil &&
-		p.data[id.index].version == id.version
+	// ComponentView returns a new ComponentView instance over the contents of
+	// this ComponentPool.
+	ComponentView() ComponentView
 }

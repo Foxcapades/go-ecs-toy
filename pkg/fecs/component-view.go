@@ -1,80 +1,47 @@
 package fecs
 
-// ComponentView defines an iterator over Component instances in a component
-// pool.
+// ComponentView is an iterator over a set of Component instances.
 type ComponentView interface {
-	// HasNext returns a boolean flag indicating whether there exists at least one
-	// more Component in the underlying pool.
+
+	// HasNext returns whether there exists at least one more Component instance
+	// in the underlying collection.
 	HasNext() bool
 
-	// Next returns the next available Component instance.
+	// Next returns the next Component instance in the underlying collection and
+	// moves the iterator index forward by one.
+	//
+	// If Next is called when there are no more Component instances remaining in
+	// the view, this method will panic.
+	//
+	// Basic usage:
+	//   for view.HasNext() {
+	//     doSomething(view.Next())
+	//   }
 	Next() Component
 }
 
-type componentView struct {
-	pool  *componentPool
-	index int
-	next  int
-}
-
-func (c *componentView) HasNext() bool {
-	for ; c.index < len(c.pool.data); c.index++ {
-		if c.pool.data[c.index].component != nil {
-			c.next = c.index
-			return true
-		}
-	}
-
-	c.next = -1
-	return false
-}
-
-func (c *componentView) Next() Component {
-	if c.next == -1 && !c.HasNext() {
-		panic("no such element")
-	}
-
-	out := c.pool.data[c.next].component
-	c.next = -1
-	c.index++
-	return out
-}
-
-type emptyComponentView struct{}
-
-func (e emptyComponentView) HasNext() bool {
-	return false
-}
-
-func (e emptyComponentView) Next() Component {
-	panic("no such element")
-}
-
-// TypedComponentView defines a ComponentView wrapper that casts the type of the
-// returned Component instances to the defined generic type T.
+// TypedComponentView is an iterator over a set of Component instances that
+// casts each returned Component to type T.
+//
+// This is useful when the type of the components being iterated over is known
+// ahead of time.
+//
+// Basic usage:
+//   untypedView := scene.Components(ComponentTypeTransform)
+//   transforms := NewTypedComponentView[Transform](untypedView)
 type TypedComponentView[T Component] interface {
-	// HasNext returns a boolean flag indicating whether there exists at least one
-	// more Component in the underlying ComponentView.
+
+	// HasNext returns whether there exists at least one more Component instance
+	// in the underlying ComponentView.
 	HasNext() bool
 
-	// Next returns the next available Component instance cast to type T.
+	// Next returns the next Component instance in the underlying collection, cast
+	// to type T, and moves the iterator index forward by one.
+	//
+	// If Next is called when there are no more Component instances remaining in
+	// the view, this method will panic.
+	//
+	// If the Component instances in the underlying collection are not of type T,
+	// this method will panic.
 	Next() T
-}
-
-// NewTypedComponentView wraps a given ComponentView and casts the values
-// returned by the wrapped iterator to values of type T.
-func NewTypedComponentView[T Component](view ComponentView) TypedComponentView[T] {
-	return &typedComponentView[T]{view}
-}
-
-type typedComponentView[T Component] struct {
-	view ComponentView
-}
-
-func (t *typedComponentView[T]) HasNext() bool {
-	return t.view.HasNext()
-}
-
-func (t *typedComponentView[T]) Next() T {
-	return t.view.Next().(T)
 }

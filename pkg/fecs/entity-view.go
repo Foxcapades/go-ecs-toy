@@ -1,43 +1,65 @@
 package fecs
 
-// EntityView defines an iterator over Scene entities that have a target
-// ComponentType attached.
 type EntityView interface {
-	// HasNext returns a boolean flag indicating whether there exists at least one
-	// more entity in the scene with the target ComponentType attached.
 	HasNext() bool
-
-	// Next returns the EntityID for the next available entity which has the
-	// target ComponentType attached.
 	Next() EntityID
 }
 
-type entityView struct {
-	scene *scene
-	cType ComponentType
-	index int
-	next  int
+type entityFilter = func(*entity) bool
+
+func newEntityView(entities []entity, filter entityFilter) EntityView {
+	return &entityView{
+		entities: entities,
+		filter:   filter,
+		next:     -1,
+		index:    0,
+	}
 }
 
-func (s *entityView) HasNext() bool {
-	for ; s.index < len(s.scene.entities); s.index++ {
-		if s.scene.entities[s.index].mask.has(s.cType) {
-			s.next = s.index
+type entityView struct {
+	entities []entity
+	filter   entityFilter
+	next     int
+	index    int
+}
+
+func (e *entityView) HasNext() bool {
+	if e.next != -1 {
+		return true
+	}
+
+	for ; e.index < len(e.entities); e.index++ {
+		if e.filter(&e.entities[e.index]) {
+			e.next = e.index
+			e.index++
 			return true
 		}
 	}
 
-	s.next = -1
 	return false
 }
 
-func (s *entityView) Next() (out EntityID) {
-	if s.next == -1 && !s.HasNext() {
+func (e *entityView) Next() (out EntityID) {
+	if !e.HasNext() {
 		panic("no such element")
 	}
 
-	out = s.scene.entities[s.next].id
-	s.next = -1
-	s.index++
+	out = e.entities[e.next].id
+	e.next = -1
+
 	return
+}
+
+func newEmptyEntityView() EntityView {
+	return emptyEntityView{}
+}
+
+type emptyEntityView struct{}
+
+func (e emptyEntityView) HasNext() bool {
+	return false
+}
+
+func (e emptyEntityView) Next() EntityID {
+	panic("no such element")
 }

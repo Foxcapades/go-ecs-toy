@@ -2,89 +2,162 @@ package fecs
 
 import "github.com/Foxcapades/go-ecs-toy/pkg/fecs/futil"
 
+// NewScene creates a new Scene instance.
+func NewScene() Scene {
+	return &scene{
+		free:  futil.NewStack[uint32](),
+		pools: make(map[ComponentType]ComponentPool),
+	}
+}
+
 type scene struct {
-	freeEntities futil.Stack[entityIndex]
-	entities     []entityDesc
-	cPools       map[ComponentType]*componentPool
+	free     futil.Stack[uint32]
+	pools    map[ComponentType]ComponentPool
+	entities []entity
+	index    uint32
 }
 
-func (s *scene) NewEntity() (id EntityID) {
-	// If we have an unused entity already in the slice, reuse it, else append a
-	// new one.
-	if !s.freeEntities.IsEmpty() {
-		index := s.freeEntities.Pop()
+func (s *scene) NewEntity() EntityID {
+	if s.free.IsEmpty() {
+		s.ensureCapacity(s.index)
 
-		id = createEntityID(index, s.entities[index].id.version)
-		s.entities[index].id = id
+		newID := newEntityID(s.index, 1)
+
+		s.entities[s.index].id = newID
+		s.index++
+
+		return newID
+	}
+
+	index := s.free.Pop()
+	newID := newEntityID(index, s.entities[index].id.version)
+
+	s.entities[index].id = newID
+
+	return newID
+}
+
+func (s *scene) AssignComponent(entityID EntityID, cons ComponentConstructor) ComponentID {
+	if !s.isValidEntityID(entityID) {
+		panic("attempted to assign a new component to the dead or invalid entity id " + entityID.String())
+	}
+
+	component := cons()
+	entity := &s.entities[entityID.index]
+
+	if entity.mask.Has(component.Type()) {
+		panic("attempted to attach multiple components of type " + component.Type().String() + " to entity " + entityID.String())
+	}
+
+	var pool ComponentPool
+
+	if p, ok := s.pools[component.Type()]; ok {
+		pool = p
 	} else {
-		index := entityIndex(len(s.entities))
-
-		id = createEntityID(index, 1)
-		s.entities = append(s.entities, entityDesc{id: id})
+		pool = newComponentPool()
+		s.pools[component.Type()] = pool
 	}
 
-	return
+	id := pool.Add(component)
+	entity.addComponent(id)
+	return id
 }
 
-func (s *scene) RemoveEntity(id EntityID) {
-	idx := id.index
-
-	if s.entityIdIsValid(id) {
-		s.entities[idx].mask.reset()
-		s.entities[idx].id.version++
-		s.freeEntities.Push(idx)
-	}
-}
-
-func (s *scene) AssignComponent(id EntityID, component Component) ComponentID {
-	if !s.entityIdIsValid(id) {
-		panic("attempted to attach a component to an invalid or deleted entity")
+func (s *scene) GetComponentByType(eid EntityID, ctp ComponentType) (Component, bool) {
+	if !s.isValidEntityID(eid) {
+		return nil, false
 	}
 
-	s.entities[id.index].mask.set(component.GetType())
-
-	if pool, ok := s.cPools[component.GetType()]; ok {
-		return pool.add(component)
-	}
-
-	pool := newComponentPool()
-	s.cPools[component.GetType()] = pool
-	return pool.add(component)
-}
-
-func (s *scene) RemoveComponent(id ComponentID) {
-	if pool, ok := s.cPools[id.cType]; ok {
-		pool.remove(id)
+	if cid, ok := s.entities[eid.index].findComponentID(ctp); ok {
+		return s.pools[ctp].Get(cid)
+	} else {
+		return nil, false
 	}
 }
 
-func (s *scene) RemoveComponentFromEntity(entityID EntityID, componentID ComponentID) {
-	if s.entityIdIsValid(entityID) {
-		s.entities[entityID.index].mask.unset(componentID.cType)
+func (s *scene) GetComponentByID(cid ComponentID) (Component, bool) {
+	return s.pools[cid.cType].Get(cid)
+}
+
+func (s *scene) RemoveEntity(eid EntityID) bool {
+	if !s.isValidEntityID(eid) {
+		return false
+	}
+
+	entity := &s.entities[eid.index]
+	entity.mask.Clear()
+	entity.id = newEntityID(eid.index, entity.id.version+1)
+
+	for i := range entity.components {
+		s.pools[entity.components[i].cType].Remove(entity.components[i])
+	}
+
+	entity.components = nil
+
+	return true
+}
+
+func (s *scene) RemoveComponentByType(eid EntityID, ctp ComponentType) bool {
+	if !s.isValidEntityID(eid) {
+		return false
+	}
+
+	entity := &s.entities[eid.index]
+	if cid, ok := entity.findComponentID(ctp); ok {
+		entity.removeComponentByType(ctp)
+		return s.pools[ctp].Remove(cid)
+	}
+
+	return false
+}
+
+func (s *scene) RemoveComponentByID(eid EntityID, cid ComponentID) bool {
+	if !s.isValidEntityID(eid) {
+		return false
+	}
+
+	s.entities[eid.index].removeComponentByID(cid)
+	return s.pools[cid.cType].Remove(cid)
+}
+
+func (s *scene) EntityHasComponent(entityID EntityID, componentType ComponentType) bool {
+	return s.isValidEntityID(entityID) &&
+		s.entities[entityID.index].hasComponentType(componentType)
+}
+
+func (s *scene) Components(ctp ComponentType) ComponentView {
+	if pool, ok := s.pools[ctp]; ok {
+		return pool.ComponentView()
+	} else {
+		return newEmptyComponentView()
 	}
 }
 
-func (s *scene) EntitiesWith(componentType ComponentType) EntityView {
-	return &entityView{
-		scene: s,
-		cType: componentType,
-		index: 0,
-		next:  -1,
-	}
+func (s *scene) EntityCount() int {
+	return len(s.entities) - s.free.Size()
 }
 
-func (s *scene) Components(componentType ComponentType) ComponentView {
-	if pool, ok := s.cPools[componentType]; ok {
-		return &componentView{
-			pool:  pool,
-			index: 0,
-			next:  -1,
-		}
-	}
-
-	return emptyComponentView{}
+func (s *scene) Entities(ctp ComponentType) EntityView {
+	return newEntityView(s.entities, func(e *entity) bool { return e.hasComponentType(ctp) })
 }
 
-func (s *scene) entityIdIsValid(entityID EntityID) bool {
-	return s.entities[entityID.index].id.version == entityID.version
+func (s *scene) ensureCapacity(minimum uint32) {
+	if uint32(len(s.entities)) >= minimum {
+		return
+	}
+
+	newSize := uint32(float32(len(s.entities)) * 1.5)
+
+	if newSize < minimum {
+		newSize = minimum
+	}
+
+	tmp := make([]entity, newSize)
+	copy(tmp, s.entities)
+	s.entities = tmp
+}
+
+func (s *scene) isValidEntityID(i EntityID) bool {
+	return i.index < uint32(len(s.entities)) &&
+		s.entities[i.index].id.Equals(&i)
 }

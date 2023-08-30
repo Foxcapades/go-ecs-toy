@@ -1,19 +1,30 @@
 package fecs
 
-type componentIndex = uint32
-type componentVersion = uint32
+import "fmt"
 
-// ComponentID defines an opaque identifier for a Component.
+// ComponentID is a handle on a Component instance that has been registered to
+// a Scene entity.
 type ComponentID struct {
-	index   componentIndex
-	version componentVersion
+	index   uint32
+	version uint32
 	cType   ComponentType
 }
 
-func newComponentID(
-	index componentIndex,
-	version componentVersion,
-	cType ComponentType,
-) ComponentID {
+func (c *ComponentID) Type() ComponentType {
+	return c.cType
+}
+
+// Equals test whether
+func (c *ComponentID) Equals(other *ComponentID) bool {
+	return c.index == other.index && c.version == other.version && c.cType == other.cType
+}
+
+// String returns a string representation of the current ComponentID.
+func (c *ComponentID) String() string {
+	return fmt.Sprintf("%d%016x%016x", c.cType, c.version, c.index)
+}
+
+// newComponentID creates a new ComponentID from the given values.
+func newComponentID(index, version uint32, cType ComponentType) ComponentID {
 	return ComponentID{index, version, cType}
 }

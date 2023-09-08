@@ -1,26 +1,34 @@
 package fecs
 
-import "fmt"
+import "strconv"
 
-// ComponentType is an identifier for a distinct component type.
+const MaxComponentTypes uint8 = 255
+
+var currentComponentTypeId uint8 = 0
+
+func NewComponentType() ComponentType {
+	if currentComponentTypeId == 255 {
+		panic("attempted to register more than 255 component types")
+	}
+
+	currentComponentTypeId++
+	return ComponentType(currentComponentTypeId)
+}
+
 type ComponentType uint8
 
 func (c ComponentType) String() string {
-	return fmt.Sprintf("ComponentType#%d", c)
+	return "ct-" + strconv.FormatUint(uint64(c), 16)
 }
 
-// MaxComponentType defines the maximum number of distinct component types that
-// may be created.
-const MaxComponentType uint8 = 255
-
-var curComponentType uint8 = 0
-
-// NewComponentType issues a new ComponentType value.
-func NewComponentType() ComponentType {
-	if curComponentType == MaxComponentType {
-		panic(fmt.Sprintf("attempted to create more than %d distinct component types!", MaxComponentType))
+func (c ComponentType) toBitMask() uint64 {
+	if c > 192 {
+		return 1 << (c - 193)
+	} else if c > 128 {
+		return 1 << (c - 129)
+	} else if c > 64 {
+		return 1 << (c - 65)
+	} else {
+		return 1 << (c - 1)
 	}
-
-	curComponentType++
-	return ComponentType(curComponentType)
 }

@@ -1,85 +1,94 @@
 package fecs
 
+import (
+	"fmt"
+)
+
 type entity struct {
-	id   EntityID
-	mask ComponentMask
-
-	components []ComponentID
+	id    EntityID
+	mask  componentMask
+	comps []*ComponentID
 }
 
-// addComponent adds the given ComponentID to the current entity.
-func (e *entity) addComponent(cid ComponentID) {
-	if e.mask.Has(cid.cType) {
-		panic("attempted to add multiple components of type " + cid.cType.String() + " to entity " + e.id.String())
+// birth initializes an entity value for the first time.
+func (e *entity) birth(sid SceneID, idx uint32) EntityID {
+	e.id.birth(sid, idx)
+	return e.id
+}
+
+// resurrect re-initializes an entity for reuse.
+func (e *entity) resurrect(idx uint32) EntityID {
+	e.id.resurrect(idx)
+	return e.id
+}
+
+// isLiving tests whether this entity value is currently in use.
+func (e *entity) isLiving(idx uint32) bool {
+	return e.id.isLiving(idx)
+}
+
+// kill "destroys" an entity value, clearing everything out of it.
+func (e *entity) kill() {
+	// Kill the EntityID.
+	e.id.kill()
+
+	// Clear the component mask as this instance will no longer have any
+	// components attached.
+	e.mask.clear()
+
+	// Clear the component id reference slice.
+	e.comps = nil
+}
+
+// addComponent adds the given ComponentID reference to this entity value.
+func (e *entity) addComponent(id *ComponentID) {
+	if e.mask.has(id.ctype) {
+		panic(fmt.Errorf("attempted to add multiple components of type %s to entity %s", id.ctype.String(), e.id.String()))
 	}
 
-	e.mask.Add(cid.cType)
-	e.components = append(e.components, cid)
-}
+	e.mask.add(id.ctype)
 
-// hasComponent tests whether the current entity has a Component with the given
-// ComponentID.
-func (e *entity) hasComponent(cid ComponentID) bool {
-	return e.mask.Has(cid.cType)
-}
-
-// hasComponentType tests whether the current entity has a Component of the
-// given ComponentType.
-func (e *entity) hasComponentType(ctp ComponentType) bool {
-	return e.mask.Has(ctp)
-}
-
-// findComponentID looks up the ComponentID for the component with the given
-// ComponentType attached to the current entity.
-//
-// If this entity does not have a Component of the given ComponentType, the
-// returned values will be an invalid ComponentID and the boolean value false.
-//
-// If this entity does have a Component of the given ComponentType, the returned
-// values will be an invalid ComponentID
-func (e *entity) findComponentID(ctp ComponentType) (ComponentID, bool) {
-	if !e.mask.Has(ctp) {
-		return ComponentID{}, false
+	if e.comps == nil {
+		e.comps = make([]*ComponentID, 0, 8)
 	}
 
-	for i := range e.components {
-		if e.components[i].cType == ctp {
-			return e.components[i], true
-		}
-	}
-
-	panic("illegal state, mask suggests entity " + e.id.String() +
-		" has component of type " + ctp.String() +
-		" however no such component was found in the component slice")
+	e.comps = append(e.comps, id)
 }
 
-// removeComponentByID removes a Component instance from the current entity if
-// it exists.
-//
-// If the target Component was found on this entity and removed, this method
-// returns true.  If the target Component was not found on this entity, this
-// method returns false.
-func (e *entity) removeComponentByID(id ComponentID) bool {
-	return e.removeComponentByType(id.cType)
-}
+func (e *entity) removeComponent(id *ComponentID) bool {
+	idx := e._indexOf(id)
 
-// removeComponentByType removes a Component instance from the current entity if
-// it exists.
-//
-// If the target Component was found on this entity and removed, this method
-// returns true.  If the target Component was not found on this entity, this
-// method returns false.
-func (e *entity) removeComponentByType(t ComponentType) bool {
-	if !e.mask.Has(t) {
+	if idx < 0 {
 		return false
 	}
 
-	for i := range e.components {
-		if e.components[i].cType == t {
-			copy(e.components[i:], e.components[i+1:])
-			return true
+	copy(e.comps[idx:], e.comps[idx+1:])
+
+	return true
+}
+
+func (e *entity) hasComponent(id *ComponentID) bool {
+	if !e.mask.has(id.ctype) {
+		return false
+	}
+
+	return e._indexOf(id) > -1
+}
+
+func (e *entity) hasComponentType(ct ComponentType) bool {
+	return e.mask.has(ct)
+}
+
+func (e *entity) _indexOf(id *ComponentID) int {
+	for i := range e.comps {
+		if e.comps[i].Equals(id) {
+			return i
 		}
 	}
 
-	return false
+	return -1
+}
+
+func (e *entity) String() string {
+	return fmt.Sprintf("e-%x-%x-%x", e.id.scene, e.id.index, e.id.version)
 }

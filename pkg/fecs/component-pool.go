@@ -1,32 +1,91 @@
 package fecs
 
-// ComponentPool is a contiguous block of memory containing zero or more
-// Component instances.
-type ComponentPool interface {
+import "github.com/Foxcapades/go-ecs-toy/pkg/fecs/futil"
 
-	// Size returns the number of Component instances currently in this
-	// ComponentPool.
-	Size() int
+const (
+	componentPoolScaleFactor     float32 = 1.5
+	componentPoolInitialCapacity         = 32
+)
 
-	// Get attempts to retrieve a component from the pool by the given
-	// ComponentID.  If the target Component was not found, returns nil and false.
-	// If the target Component was found, returns the target component and true.
-	Get(componentID ComponentID) (Component, bool)
+func newComponentPool() *componentPool {
+	return &componentPool{
+		free: futil.NewStack[uint32](),
+		ids:  make([]ComponentID, componentPoolInitialCapacity),
+		pool: make([]Component, componentPoolInitialCapacity),
+		size: 0,
+	}
+}
 
-	// Has tests whether this ComponentPool contains the component with the given
-	// ComponentID.
-	Has(componentID ComponentID) bool
+type componentPool struct {
+	free futil.Stack[uint32]
+	ids  []ComponentID
+	pool []Component
+	size uint32
+}
 
-	// Add adds the target Component to this ComponentPool, generating and
-	// returning a ComponentID for the Component.
-	Add(component Component) ComponentID
+func (c *componentPool) containsComponent(id *ComponentID) bool {
+	return id.index < c.size && c.ids[id.index].Equals(id)
+}
 
-	// Remove removes the target Component from this ComponentPool.  If the target
-	// Component was not found, returns false.  If the target Component was found
-	// and removed, returns true.
-	Remove(componentID ComponentID) bool
+func (c *componentPool) getComponent(id *ComponentID) (Component, bool) {
+	if !c.containsComponent(id) {
+		return nil, false
+	}
 
-	// ComponentView returns a new ComponentView instance over the contents of
-	// this ComponentPool.
-	ComponentView() ComponentView
+	return c.pool[id.index], true
+}
+
+func (c *componentPool) newComponent(comp Component) ComponentID {
+	if c.free.IsEmpty() {
+		return c._append(comp)
+	} else {
+		return c._overwrite(comp)
+	}
+}
+
+func (c *componentPool) removeComponent(id *ComponentID) bool {
+	if !c.containsComponent(id) {
+		return false
+	}
+
+	idRef := &c.ids[id.index]
+	idRef.clear()
+
+	c.pool[id.index] = nil
+	c.free.Push(id.index)
+
+	return true
+}
+
+func (c *componentPool) _append(comp Component) ComponentID {
+	c.ids[c.size].init(c.size, comp.Type())
+	c.pool[c.size] = comp
+	c.size++
+	return c.ids[c.size-1]
+}
+
+func (c *componentPool) _overwrite(comp Component) ComponentID {
+	c._ensureCapacity(c.size + 1)
+	idx := c.free.Pop()
+
+	c.ids[idx].init(idx, comp.Type())
+	c.pool[idx] = comp
+
+	return c.ids[idx]
+}
+
+func (c *componentPool) _ensureCapacity(minimum uint32) {
+	if minimum <= uint32(len(c.pool)) {
+		return
+	}
+
+	newSize := max(uint32(float32(len(c.pool))*componentPoolScaleFactor), minimum)
+
+	newIDs := make([]ComponentID, newSize)
+	copy(newIDs, c.ids)
+	c.ids = newIDs
+
+	newComponents := make([]Component, newSize)
+	copy(newComponents, c.pool)
+	c.pool = newComponents
 }

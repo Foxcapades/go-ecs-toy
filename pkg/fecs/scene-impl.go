@@ -1,163 +1,125 @@
 package fecs
 
-import "github.com/Foxcapades/go-ecs-toy/pkg/fecs/futil"
+import (
+	"fmt"
+	"strconv"
 
-// NewScene creates a new Scene instance.
+	"github.com/Foxcapades/go-ecs-toy/pkg/fecs/futil"
+)
+
+var sceneID SceneID = 0
+
 func NewScene() Scene {
+	sceneID++
 	return &scene{
-		free:  futil.NewStack[uint32](),
-		pools: make(map[ComponentType]ComponentPool),
+		sceneID:    sceneID,
+		entities:   newEntityPool(),
+		components: make(map[ComponentType]*componentPool, 16),
 	}
 }
 
 type scene struct {
-	free     futil.Stack[uint32]
-	pools    map[ComponentType]ComponentPool
-	entities []entity
-	index    uint32
+	sceneID    SceneID
+	entities   entityPool
+	components map[ComponentType]*componentPool
 }
 
-func (s *scene) NewEntity() EntityID {
-	if s.free.IsEmpty() {
-		s.ensureCapacity(s.index)
-
-		newID := newEntityID(s.index, 1)
-
-		s.entities[s.index].id = newID
-		s.index++
-
-		return newID
-	}
-
-	index := s.free.Pop()
-	newID := newEntityID(index, s.entities[index].id.version)
-
-	s.entities[index].id = newID
-
-	return newID
+func (s *scene) ID() SceneID {
+	return s.sceneID
 }
 
-func (s *scene) AssignComponent(entityID EntityID, cons ComponentConstructor) ComponentID {
-	if !s.isValidEntityID(entityID) {
-		panic("attempted to assign a new component to the dead or invalid entity id " + entityID.String())
-	}
-
-	component := cons()
-	entity := &s.entities[entityID.index]
-
-	if entity.mask.Has(component.Type()) {
-		panic("attempted to attach multiple components of type " + component.Type().String() + " to entity " + entityID.String())
-	}
-
-	var pool ComponentPool
-
-	if p, ok := s.pools[component.Type()]; ok {
-		pool = p
-	} else {
-		pool = newComponentPool()
-		s.pools[component.Type()] = pool
-	}
-
-	id := pool.Add(component)
-	entity.addComponent(id)
-	return id
+func (s *scene) ContainsEntity(id *EntityID) bool {
+	return s.entities.containsEntity(id)
 }
 
-func (s *scene) GetComponentByType(eid EntityID, ctp ComponentType) (Component, bool) {
-	if !s.isValidEntityID(eid) {
-		return nil, false
-	}
-
-	if cid, ok := s.entities[eid.index].findComponentID(ctp); ok {
-		return s.pools[ctp].Get(cid)
-	} else {
-		return nil, false
-	}
-}
-
-func (s *scene) GetComponentByID(cid ComponentID) (Component, bool) {
-	return s.pools[cid.cType].Get(cid)
-}
-
-func (s *scene) RemoveEntity(eid EntityID) bool {
-	if !s.isValidEntityID(eid) {
+func (s *scene) DestroyEntity(id *EntityID) bool {
+	// If the target entity is not in this scene, return false as we aren't
+	// removing it.
+	if !s.entities.containsEntity(id) {
 		return false
 	}
 
-	entity := &s.entities[eid.index]
-	entity.mask.Clear()
-	entity.id = newEntityID(eid.index, entity.id.version+1)
+	// Grab all the component ids attached to the target entity.
+	comps := s.entities.getEntityComponents(id)
 
-	for i := range entity.components {
-		s.pools[entity.components[i].cType].Remove(entity.components[i])
+	// Remove the entity's components from the component pools.
+	for _, ref := range comps {
+		if pool, ok := s.components[ref.ctype]; ok {
+			pool.removeComponent(ref)
+		}
 	}
 
-	entity.components = nil
+	// kill the entity.
+	s.entities.removeEntity(id)
 
+	// return true because we did remove the entity from the scene.
 	return true
 }
 
-func (s *scene) RemoveComponentByType(eid EntityID, ctp ComponentType) bool {
-	if !s.isValidEntityID(eid) {
-		return false
+func (s *scene) Entities(ct ...ComponentType) futil.Iterator[EntityID] {
+	return s.entities.entities(ct)
+}
+
+func (s *scene) NewEntity() EntityID {
+	return s.entities.newEntity(s.sceneID)
+}
+
+func (s *scene) AttachComponent(id *EntityID, constructor ComponentConstructor) ComponentID {
+	if !s.entities.containsEntity(id) {
+		panic(fmt.Errorf("attempted to attach a new component to an entity (%s) which is not currently registered to the target scene (%s)", id.String(), s.String()))
 	}
 
-	entity := &s.entities[eid.index]
-	if cid, ok := entity.findComponentID(ctp); ok {
-		entity.removeComponentByType(ctp)
-		return s.pools[ctp].Remove(cid)
+	comp := constructor()
+
+	if pool, ok := s.components[comp.Type()]; ok {
+		cid := pool.newComponent(comp)
+		s.entities.addComponent(id, &cid)
+		return cid
 	}
 
-	return false
+	pool := newComponentPool()
+	s.components[comp.Type()] = pool
+
+	cid := pool.newComponent(comp)
+	s.entities.addComponent(id, &cid)
+
+	return cid
 }
 
-func (s *scene) RemoveComponentByID(eid EntityID, cid ComponentID) bool {
-	if !s.isValidEntityID(eid) {
-		return false
+func (s *scene) GetComponent(cid *ComponentID) (Component, bool) {
+	if pool, ok := s.components[cid.ctype]; ok {
+		return pool.getComponent(cid)
 	}
 
-	s.entities[eid.index].removeComponentByID(cid)
-	return s.pools[cid.cType].Remove(cid)
+	return nil, false
 }
 
-func (s *scene) EntityHasComponent(entityID EntityID, componentType ComponentType) bool {
-	return s.isValidEntityID(entityID) &&
-		s.entities[entityID.index].hasComponentType(componentType)
-}
+func (s *scene) GetComponentByType(eid *EntityID, ct ComponentType) (Component, bool) {
+	if id, ok := s.entities.getEntityComponent(eid, ct); ok {
+		if pool, ok := s.components[ct]; ok {
+			if comp, ok := pool.getComponent(id); ok {
+				return comp, true
+			}
 
-func (s *scene) Components(ctp ComponentType) ComponentView {
-	if pool, ok := s.pools[ctp]; ok {
-		return pool.ComponentView()
-	} else {
-		return newEmptyComponentView()
-	}
-}
+			panic("illegal state")
+		}
 
-func (s *scene) EntityCount() int {
-	return len(s.entities) - s.free.Size()
-}
-
-func (s *scene) Entities(ctp ComponentType) EntityView {
-	return newEntityView(s.entities, func(e *entity) bool { return e.hasComponentType(ctp) })
-}
-
-func (s *scene) ensureCapacity(minimum uint32) {
-	if uint32(len(s.entities)) >= minimum {
-		return
+		panic("illegal state")
 	}
 
-	newSize := uint32(float32(len(s.entities)) * 1.5)
-
-	if newSize < minimum {
-		newSize = minimum
-	}
-
-	tmp := make([]entity, newSize)
-	copy(tmp, s.entities)
-	s.entities = tmp
+	return nil, false
 }
 
-func (s *scene) isValidEntityID(i EntityID) bool {
-	return i.index < uint32(len(s.entities)) &&
-		s.entities[i.index].id.Equals(&i)
+func (s *scene) HasComponent(eid *EntityID, cid *ComponentID) bool {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (s *scene) RemoveComponent(eid *EntityID, cid *ComponentID) bool {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (s *scene) String() string {
+	return "scene-" + strconv.FormatUint(uint64(s.sceneID), 16)
 }
